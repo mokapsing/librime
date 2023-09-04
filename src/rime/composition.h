@@ -30,7 +30,7 @@ class Composition : public Segmentation {
   string GetPrompt() const;
   string GetCommitText() const;
   string GetScriptText() const;
-  string GetDebugText() const;
+  RIME_API string GetDebugText() const;
   // Returns text of the last segment before the given position.
   string GetTextBefore(size_t pos) const;
   void set_preedit_format(an<ConfigList> patterns){ preedit_formatter_.Load(patterns); }
