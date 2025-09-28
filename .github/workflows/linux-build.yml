@@ -37,19 +37,37 @@ jobs:
         with:
           repository: ${{ inputs.repository }}
 
-      - name: Install dependency
+      - name: Install dependency (system packages)
+        if: ${{ matrix.compiler != 'musl-gcc' }}
         run: |
           sudo apt-get update
-          if [ "${{ matrix.compiler }}" = "musl-gcc" ]; then
-            sudo apt-get install -y musl-tools \
-              libboost-all-dev libglog-dev libyaml-cpp-dev libgflags-dev \
-              libleveldb-dev libmarisa-dev libopencc-dev
-          else
-            sudo apt-get install -y \
-              libboost-all-dev libglog-dev libyaml-cpp-dev libgflags-dev \
-              libleveldb-dev libmarisa-dev libopencc-dev
-          fi
+          sudo apt-get install -y \
+            libboost-all-dev libglog-dev libyaml-cpp-dev libgflags-dev \
+            libleveldb-dev libmarisa-dev libopencc-dev
           ./action-install-linux.sh
+
+      - name: Install dependency (musl build)
+        if: ${{ matrix.compiler == 'musl-gcc' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools \
+            libboost-all-dev libyaml-cpp-dev libgflags-dev \
+            libleveldb-dev libmarisa-dev libopencc-dev
+          ./action-install-linux.sh
+
+      - name: Build glog from source (for musl)
+        if: ${{ matrix.compiler == 'musl-gcc' }}
+        run: |
+          git clone --depth=1 https://github.com/google/glog.git
+          cd glog
+          mkdir build && cd build
+          cmake .. \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DCMAKE_C_COMPILER=musl-gcc \
+            -DCMAKE_CXX_COMPILER=g++
+          make -j$(nproc)
+          sudo make install
 
       - name: Configure (CMake)
         run: |
