@@ -13,12 +13,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        compiler: [gcc, clang]
+        compiler: [gcc, clang, musl-gcc]
         include:
           - compiler: gcc
             cxx_compiler: g++
+            static: false
           - compiler: clang
             cxx_compiler: clang++
+            static: false
+          - compiler: musl-gcc
+            cxx_compiler: g++
+            static: true
     env:
       CC: ${{ matrix.compiler }}
       CXX: ${{ matrix.cxx_compiler }}
@@ -30,9 +35,17 @@ jobs:
           repository: ${{ inputs.repository }}
 
       - name: Install dependency
-        run: ./action-install-linux.sh
+        run: |
+          sudo apt-get update
+          # 只在需要时安装 musl-tools
+          if [ "${{ matrix.compiler }}" = "musl-gcc" ]; then
+            sudo apt-get install -y musl-tools
+          fi
+          ./action-install-linux.sh
 
       - name: Build and test
         run: make test
         env:
           CMAKE_GENERATOR: Ninja
+          CFLAGS: ${{ matrix.static && '-static' || '' }}
+          LDFLAGS: ${{ matrix.static && '-static' || '' }}
