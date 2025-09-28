@@ -18,16 +18,19 @@ jobs:
           - compiler: gcc
             cxx_compiler: g++
             static: false
+            build_dir: build-gcc
           - compiler: clang
             cxx_compiler: clang++
             static: false
+            build_dir: build-clang
           - compiler: musl-gcc
             cxx_compiler: g++
             static: true
+            build_dir: build-musl
     env:
       CC: ${{ matrix.compiler }}
       CXX: ${{ matrix.cxx_compiler }}
-    
+
     steps:
       - name: Checkout last commit
         uses: actions/checkout@v5
@@ -37,15 +40,50 @@ jobs:
       - name: Install dependency
         run: |
           sudo apt-get update
-          # 只在需要时安装 musl-tools
           if [ "${{ matrix.compiler }}" = "musl-gcc" ]; then
-            sudo apt-get install -y musl-tools
+            sudo apt-get install -y musl-tools \
+              libboost-all-dev libglog-dev libyaml-cpp-dev libgflags-dev \
+              libleveldb-dev libmarisa-dev libopencc-dev
+          else
+            sudo apt-get install -y \
+              libboost-all-dev libglog-dev libyaml-cpp-dev libgflags-dev \
+              libleveldb-dev libmarisa-dev libopencc-dev
           fi
           ./action-install-linux.sh
 
-      - name: Build and test
-        run: make test
-        env:
-          CMAKE_GENERATOR: Ninja
-          CFLAGS: ${{ matrix.static && '-static' || '' }}
-          LDFLAGS: ${{ matrix.static && '-static' || '' }}
+      - name: Configure (CMake)
+        run: |
+          mkdir -p ${{ matrix.build_dir }} && cd ${{ matrix.build_dir }}
+          if [ "${{ matrix.static }}" = "true" ]; then
+            cmake .. \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DBUILD_SHARED_LIBS=OFF \
+              -DCMAKE_EXE_LINKER_FLAGS="-static" \
+              -DCMAKE_C_COMPILER=${{ matrix.compiler }} \
+              -DCMAKE_CXX_COMPILER=${{ matrix.cxx_compiler }}
+          else
+            cmake .. \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_C_COMPILER=${{ matrix.compiler }} \
+              -DCMAKE_CXX_COMPILER=${{ matrix.cxx_compiler }}
+          fi
+
+      - name: Build
+        run: |
+          cd ${{ matrix.build_dir }}
+          cmake --build . -j$(nproc)
+
+      - name: Test
+        if: ${{ !matrix.static }}
+        run: |
+          cd ${{ matrix.build_dir }}
+          ctest --output-on-failure
+
+      - name: Upload musl static artifacts
+        if: ${{ matrix.static }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: librime-musl-static
+          path: |
+            ${{ matrix.build_dir }}/librime.a
+            ${{ matrix.build_dir }}/bin/*
